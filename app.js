@@ -8,7 +8,9 @@ import * as utils from './util.js';
 
 const TIMEZONE_STRING = process.env.TIMEZONE_STRING || 'America/New_York';
 const CRON = process.env.CRON || '0 12 * * * ';
+const APP_MODE = process.env.APP_MODE || 'MANUAL';
 const PUSHOVER = process.env.PUSHOVER_USER && process.env.PUSHOVER_TOKEN ? true : false;
+const DEBUG = process.env.DEBUG || false;
 
 
 function parseWithingsData(data) {
@@ -129,29 +131,31 @@ async function update() {
 
             if (weightResponse.status === 201 && fatResponse.status === 201) {
                 if (PUSHOVER) {
-                    utils.sendPushoverMessage(message = `Withings data successfully sent to Fitbit: (Body Fat: ${inputData.fat} Weight: ${inputData.weight}, Date: ${inputData.date}, Time: ${inputData.time}}`);
+                    utils.sendPushoverMessage(`Withings data successfully sent to Fitbit: (Body Fat: ${inputData.fat} Weight: ${inputData.weight}, Date: ${inputData.date}, Time: ${inputData.time}}`);
                 };
             } else {
                 if (PUSHOVER) {
-                    utils.sendPushoverMessage(message = `Error sending Withings data to Fitbit: postFitbitWeight ${weightResponse.status}, postFitbitBodyFat: ${fatResponse.status}`);
+                    utils.sendPushoverMessage(`Error sending Withings data to Fitbit: postFitbitWeight ${weightResponse.status}, postFitbitBodyFat: ${fatResponse.status}`);
                 };
             }
         } catch (error) {
             if (PUSHOVER) {
-                utils.sendPushoverMessage(message = `Error sending Withings data to Fitbit: ${error}`);
+                utils.sendPushoverMessage(`Error sending Withings data to Fitbit: ${error}`);
             };
         };
     } else {
         utils.debugLog('No weight data to log today.')
         if (DEBUG && PUSHOVER) {
-            if (PUSHOVER) {
-                utils.sendPushoverMessage(message = 'No weight data to log today.')
-            };
-
+            utils.sendPushoverMessage('No weight data to log today.')
         };
     };
 };
 
-const job = schedule.scheduleJob(CRON, function () {
+if (APP_MODE === 'SCHEDULED') {
+    console.log(`App running in scheduled mode (Config: ${CRON})`);
+    const job = schedule.scheduleJob(CRON, function () {
+        update();
+    });
+} else {
     update();
-});
+};

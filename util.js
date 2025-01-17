@@ -23,7 +23,7 @@ var pusher = new PushOver({
     token: PUSHOVER_TOKEN,
 });
 
-export function sendPushoverMessage(title = 'Withings2Fitbit', message ) {
+export function sendPushoverMessage(message, title = 'Withings2Fitbit') {
   pusher.send({message, title}, function (err, result) {
       if (err) {
           throw err
