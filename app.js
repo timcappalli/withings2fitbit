@@ -2,22 +2,14 @@ import moment from 'moment-timezone';
 import axios from 'axios';
 import { returnFitbitTokens, returnWithingsTokens } from './tokenHandling.js';
 import 'dotenv/config';
-import PushOver from 'pushover-notifications';
 import schedule from 'node-schedule';
 import * as utils from './util.js';
 
-const PUSHOVER_USER = process.env.PUSHOVER_USER || null;
-const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || null;
+
 const TIMEZONE_STRING = process.env.TIMEZONE_STRING || 'America/New_York';
 const CRON = process.env.CRON || '0 12 * * * ';
+const PUSHOVER = process.env.PUSHOVER_USER && process.env.PUSHOVER_TOKEN ? true : false;
 
-
-
-
-var pusher = new PushOver({
-    user: PUSHOVER_USER,
-    token: PUSHOVER_TOKEN,
-});
 
 function parseWithingsData(data) {
 
@@ -136,40 +128,28 @@ async function update() {
             utils.debugLog(fatResponse);
 
             if (weightResponse.status === 201 && fatResponse.status === 201) {
-
-                let pMsg = { message: `Withings data successfully sent to Fitbit: (Body Fat: ${inputData.fat} Weight: ${inputData.weight}, Date: ${inputData.date}, Time: ${inputData.time}}`, title: "Withings2Fitbit" }
-                pusher.send(pMsg, function (err, result) {
-                    if (err) {
-                        throw err
-                    }
-                });
+                if (PUSHOVER) {
+                    utils.sendPushoverMessage(message = `Withings data successfully sent to Fitbit: (Body Fat: ${inputData.fat} Weight: ${inputData.weight}, Date: ${inputData.date}, Time: ${inputData.time}}`);
+                };
             } else {
-                let pMsg = { message: `Error sending Withings data to Fitbit: postFitbitWeight ${weightResponse.status}, postFitbitBodyFat: ${fatResponse.status}`, title: "Withings2Fitbit" }
-                pusher.send(pMsg, function (err, result) {
-                    if (err) {
-                        throw err
-                    }
-                });
+                if (PUSHOVER) {
+                    utils.sendPushoverMessage(message = `Error sending Withings data to Fitbit: postFitbitWeight ${weightResponse.status}, postFitbitBodyFat: ${fatResponse.status}`);
+                };
             }
         } catch (error) {
-            let pMsg = { message: `Error sending Withings data to Fitbit: ${error}`, title: "Withings2Fitbit" }
-            pusher.send(pMsg, function (err, result) {
-                if (err) {
-                    throw err
-                }
-            });
-        }
+            if (PUSHOVER) {
+                utils.sendPushoverMessage(message = `Error sending Withings data to Fitbit: ${error}`);
+            };
+        };
     } else {
         utils.debugLog('No weight data to log today.')
-        if (DEBUG) {
-            let pMsg = { message: `No weight data to log today.`, title: "Withings2Fitbit" }
-            pusher.send(pMsg, function (err, result) {
-                if (err) {
-                    throw err
-                }
-            });
-        }
-    }
+        if (DEBUG && PUSHOVER) {
+            if (PUSHOVER) {
+                utils.sendPushoverMessage(message = 'No weight data to log today.')
+            };
+
+        };
+    };
 };
 
 const job = schedule.scheduleJob(CRON, function () {
