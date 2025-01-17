@@ -1,0 +1,7 @@
+withings-cache.json
+fitbit-cache.json
+.env
+node_modules
+junk/
+sample/
+samples/

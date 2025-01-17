@@ -1,0 +1,8 @@
+junk/
+sample/
+samples/
+node_modules/
+.env
+.DS_Store
+withings-cache.json
+fitbit-cache.json
