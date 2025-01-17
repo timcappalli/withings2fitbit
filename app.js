@@ -6,10 +6,6 @@ import PushOver from 'pushover-notifications';
 import schedule from 'node-schedule';
 import * as utils from './util.js';
 
-//testing only
-//import withingsTestData from './samples/withings.json' with { type: "json" };
-//testing only//
-
 const PUSHOVER_USER = process.env.PUSHOVER_USER || null;
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || null;
 const TIMEZONE_STRING = process.env.TIMEZONE_STRING || 'America/New_York';

@@ -1,6 +1,6 @@
 {
   "name": "withings2fitbit",
-  "version": "2025.01.16",
+  "version": "2025.01.16a",
   "type": "module",
   "main": "app.js",
   "scripts": {
