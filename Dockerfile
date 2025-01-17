@@ -15,3 +15,5 @@ COPY . .
 
 # Define the command to run your app
 CMD [ "node", "app.js" ]
+
+LABEL org.opencontainers.image.source https://github.com/timcappalli/withings2fitbit
