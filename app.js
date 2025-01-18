@@ -7,7 +7,7 @@ import * as utils from './util.js';
 
 
 const TIMEZONE_STRING = process.env.TIMEZONE_STRING || 'America/New_York';
-const CRON = process.env.CRON || '0 12 * * * '; // cron: daily at noon
+const RUN_HOUR = process.env.RUN_HOUR || 12; // run at noon local time
 const APP_MODE = process.env.APP_MODE || 'MANUAL'; // run in manual invocation mode by default
 const PUSHOVER = process.env.PUSHOVER_USER && process.env.PUSHOVER_TOKEN ? true : false;
 const DEBUG = process.env.DEBUG || false;
@@ -165,9 +165,15 @@ async function update() {
     };
 };
 
+let rule = new schedule.RecurrenceRule();
+rule.tz = TIMEZONE_STRING;
+rule.hour = RUN_HOUR;
+rule.minute = 0;
+rule.second = 0;
+
 if (APP_MODE === 'SCHEDULED') {
-    console.log(`App running in scheduled mode (Config: ${CRON})`);
-    const job = schedule.scheduleJob(CRON, function () {
+    console.log(`App running in scheduled mode (Config: ${RUN_HOUR}:00:00, ${TIMEZONE_STRING})`);
+    const job = schedule.scheduleJob(rule, function () {
         update();
     });
 } else {
