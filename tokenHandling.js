@@ -108,11 +108,13 @@ export async function returnWithingsTokens() {
         writeToJsonFile('withings-cache.json', withingsTokenResponse.body);
         withingsTokens = withingsTokenResponse.body;
     } else {
-        // TODO: add pushover notification
-        throw new Error('Failed to retrieve Withings tokens');
+        utils.sendPushoverMessage('[returnWithingsTokens] Failed to retrieve Withings tokens');
+        utils.debugError('[returnWithingsTokens] Failed to retrieve Withings tokens');
+        return { status: "error", msg: "[returnWithingsTokens] Failed to retrieve Withings tokens", data: {}};
     }
 
-    return withingsTokens;
+    //return withingsTokens;
+    return { status: "success", msg: "", data: withingsTokens}
 }
 
 export async function returnFitbitTokens() {
@@ -137,9 +139,10 @@ export async function returnFitbitTokens() {
         writeToJsonFile('fitbit-cache.json', fitbitTokenResponse);
         fitbitTokens = fitbitTokenResponse;
     } else {
-        // TODO: add pushover notification
-        throw new Error('Failed to retrieve Fitbit tokens');
+        utils.sendPushoverMessage('[returnFitbitTokens] Failed to retrieve Fitbit tokens')
+        utils.debugError('[returnFitbitTokens] Failed to retrieve Fitbit tokens')
+        return { status: "error", msg: "Failed to retrieve Fitbit tokens", data: {}};
     }
 
-    return fitbitTokens;
+    return { status: "success", msg: "", data: fitbitTokens};
 }

@@ -7,8 +7,8 @@ import * as utils from './util.js';
 
 
 const TIMEZONE_STRING = process.env.TIMEZONE_STRING || 'America/New_York';
-const CRON = process.env.CRON || '0 12 * * * ';
-const APP_MODE = process.env.APP_MODE || 'MANUAL';
+const CRON = process.env.CRON || '0 12 * * * '; // cron: daily at noon
+const APP_MODE = process.env.APP_MODE || 'MANUAL'; // run in manual invocation mode by default
 const PUSHOVER = process.env.PUSHOVER_USER && process.env.PUSHOVER_TOKEN ? true : false;
 const DEBUG = process.env.DEBUG || false;
 
@@ -111,42 +111,56 @@ async function update() {
     let withingsTokens = await returnWithingsTokens();
     utils.debugLog(`withingsTokens: ${JSON.stringify(withingsTokens, null, 4)}`);
 
-    let withingsData = await fetchWithingsData(withingsTokens.access_token, startDay);
-    utils.debugLog(`withingsData: ${JSON.stringify(withingsTokens, null, 4)}`);
+    if (withingsTokens && withingsTokens.status === 'success') {
+        let withingsData = await fetchWithingsData(withingsTokens.data.access_token, startDay);
+        utils.debugLog(`withingsData: ${JSON.stringify(withingsData, null, 4)}`);
 
-    if (withingsData.measuregrps && withingsData.measuregrps.length > 0) {
+        if (withingsData.measuregrps && withingsData.measuregrps.length > 0) {
 
-        let inputData = parseWithingsData(withingsData);
+            let inputData = parseWithingsData(withingsData);
 
-        let fitbitToken = await returnFitbitTokens();
-        utils.debugLog(`fitbitToken: ${JSON.stringify(fitbitToken, null, 4)}`);
+            let fitbitTokens = await returnFitbitTokens();
+            utils.debugLog(`fitbitToken: ${JSON.stringify(fitbitTokens.data, null, 4)}`);
 
-        try {
+            if (fitbitTokens && fitbitTokens.status === 'success') {
+                try {
 
-            const weightResponse = await postFitbitWeight(fitbitToken.access_token, inputData.weight, inputData.date, inputData.time);
-            const fatResponse = await postFitbitBodyFat(fitbitToken.access_token, inputData.fat, inputData.date, inputData.time);
+                    const weightResponse = await postFitbitWeight(fitbitTokens.data.access_token, inputData.weight, inputData.date, inputData.time);
+                    const fatResponse = await postFitbitBodyFat(fitbitTokens.data.access_token, inputData.fat, inputData.date, inputData.time);
 
-            utils.debugLog(weightResponse);
-            utils.debugLog(fatResponse);
+                    utils.debugLog(weightResponse);
+                    utils.debugLog(fatResponse);
 
-            if (weightResponse.status === 201 && fatResponse.status === 201) {
-                if (PUSHOVER) {
-                    utils.sendPushoverMessage(`Withings data successfully sent to Fitbit: (Body Fat: ${inputData.fat} Weight: ${inputData.weight}, Date: ${inputData.date}, Time: ${inputData.time}}`);
+                    if (weightResponse.status === 201 && fatResponse.status === 201) {
+                        if (PUSHOVER) {
+                            utils.sendPushoverMessage(`Withings data successfully sent to Fitbit: (Body Fat: ${inputData.fat} Weight: ${inputData.weight}, Date: ${inputData.date}, Time: ${inputData.time}}`);
+                        };
+                    } else {
+                        if (PUSHOVER) {
+                            utils.sendPushoverMessage(`Error sending Withings data to Fitbit: postFitbitWeight ${weightResponse.status}, postFitbitBodyFat: ${fatResponse.status}`);
+                        };
+                    }
+                } catch (error) {
+                    if (PUSHOVER) {
+                        utils.sendPushoverMessage(`Error sending Withings data to Fitbit: ${error}`);
+                    };
                 };
             } else {
+                utils.debugError(`Error acquiring Fitbit tokens. fitbitTokens: ${JSON.stringify(fitbitTokens, null, 2)}`);
                 if (PUSHOVER) {
-                    utils.sendPushoverMessage(`Error sending Withings data to Fitbit: postFitbitWeight ${weightResponse.status}, postFitbitBodyFat: ${fatResponse.status}`);
-                };
+                    utils.sendPushoverMessage(`Error acquiring Fitbit tokens. fitbitTokens: ${JSON.stringify(fitbitTokens, null, 2)}`);
+                }
             }
-        } catch (error) {
-            if (PUSHOVER) {
-                utils.sendPushoverMessage(`Error sending Withings data to Fitbit: ${error}`);
+        } else {
+            utils.debugLog('No weight data to log today.')
+            if (DEBUG && PUSHOVER) {
+                utils.sendPushoverMessage('No weight data to log today.')
             };
         };
     } else {
-        utils.debugLog('No weight data to log today.')
-        if (DEBUG && PUSHOVER) {
-            utils.sendPushoverMessage('No weight data to log today.')
+        utils.debugError(`Error acquiring Withings tokens. withingsTokens: ${JSON.stringify(withingsTokens, null, 2)}`);
+        if (PUSHOVER) {
+            utils.sendPushoverMessage(`Error acquiring Withings tokens. withingsTokens: ${JSON.stringify(withingsTokens, null, 2)}`);
         };
     };
 };
