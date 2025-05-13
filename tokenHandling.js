@@ -96,7 +96,7 @@ export async function returnWithingsTokens() {
         utils.debugLog('[returnWithingsTokens] using cached withings RT');
     } else if (process.env.WITHINGS_REFRESH_TOKEN) {
         withingsRefreshToken = process.env.WITHINGS_REFRESH_TOKEN;
-        utils.debugLog('[returnWithingsTokens using withings RT from ENV');
+        utils.debugLog('[returnWithingsTokens] using withings RT from ENV');
     } else {
         throw new Error('No Withings refresh token found');
     };

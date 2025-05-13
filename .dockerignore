@@ -5,3 +5,4 @@ node_modules
 junk/
 sample/
 samples/
+.DS_Store
