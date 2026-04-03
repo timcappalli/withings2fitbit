@@ -1,7 +1,7 @@
-import moment from 'moment-timezone';
+import 'dotenv/config';
+import { DateTime } from 'luxon';
 import axios from 'axios';
 import { returnFitbitTokens, returnWithingsTokens } from './tokenHandling.js';
-import 'dotenv/config';
 import schedule from 'node-schedule';
 import * as utils from './util.js';
 
@@ -9,41 +9,34 @@ import * as utils from './util.js';
 const TIMEZONE_STRING = process.env.TIMEZONE_STRING || 'America/New_York';
 const RUN_HOUR = process.env.RUN_HOUR || 12; // run at noon local time
 const APP_MODE = process.env.APP_MODE || 'MANUAL'; // run in manual invocation mode by default
-const PUSHOVER = process.env.PUSHOVER_USER && process.env.PUSHOVER_TOKEN ? true : false;
-const DEBUG = process.env.DEBUG || false;
+const PUSHOVER = !!(process.env.PUSHOVER_USER && process.env.PUSHOVER_TOKEN);
+const DEBUG = process.env.DEBUG === 'true';
 
+
+function decodeWithingsValue({ value, unit }) {
+    const raw = `${value}`;
+    const pos = raw.length - (unit * -1);
+    return `${raw.slice(0, pos)}.${raw.slice(pos)}`;
+}
 
 function parseWithingsData(data) {
+    const measures = data.measuregrps[0].measures;
+    const result = {};
 
-    let measures = data.measuregrps[0].measures;
-    let result = {};
+    const weightData = measures.find(item => item.type === 1);
+    if (weightData) result.weight = decodeWithingsValue(weightData);
 
-    let weightData = measures.find(item => item.type === 1);
-    if (weightData) {
-        let modifier = weightData.unit * -1;
-        let weightRaw = `${weightData.value}`;
-        let weightLength = weightRaw.length;
-        result.weight = `${weightRaw.slice(0, weightLength - modifier)}.${weightRaw.slice(weightLength - modifier)}`;
-    }
+    const fatData = measures.find(item => item.type === 6);
+    if (fatData) result.fat = decodeWithingsValue(fatData);
 
-    let fatData = measures.find(item => item.type === 6);
-    if (fatData) {
-        let modifier = fatData.unit * -1;
-        let fatRaw = `${fatData.value}`;
-        let fatLength = fatRaw.length;
-        result.fat = `${fatRaw.slice(0, fatLength - modifier)}.${fatRaw.slice(fatLength - modifier)}`;
-    }
-
-    result.date = moment.unix(data.measuregrps[0].date).tz(TIMEZONE_STRING).format('YYYY-MM-DD');
-
-    result.time = moment.unix(data.measuregrps[0].date).tz(TIMEZONE_STRING).format('HH:mm:ss');
+    const ts = DateTime.fromSeconds(data.measuregrps[0].date).setZone(TIMEZONE_STRING);
+    result.date = ts.toFormat('yyyy-MM-dd');
+    result.time = ts.toFormat('HH:mm:ss');
 
     return result;
 }
 
 async function fetchWithingsData(token, dateTime) {
-    let url = 'https://scalews.withings.com/measure';
-
     const withingsPayload = {
         action: 'getmeas',
         meastypes: '1,6',
@@ -52,120 +45,93 @@ async function fetchWithingsData(token, dateTime) {
     };
 
     try {
-        const response = await axios.post(url, new URLSearchParams(withingsPayload).toString(), {
+        const response = await axios.post('https://scalews.withings.com/measure', new URLSearchParams(withingsPayload).toString(), {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
         });
-
-        return (response.data.body);
+        return response.data.body;
     } catch (error) {
         utils.debugError('[fetchWithingsData] Error making POST request:', error);
     }
 }
 
-async function postFitbitWeight(token, weight, date, time) {
-    let url = 'https://api.fitbit.com/1/user/-/body/log/weight.json';
-
+async function postFitbitLog(token, endpoint, params) {
     try {
-        const response = await axios.post(url, null, {
-            params: {
-                weight: weight,
-                date: date,
-                time: time
-            },
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
+        const response = await axios.post(`https://api.fitbit.com/1/user/-/body/log/${endpoint}.json`, null, {
+            params,
+            headers: { Authorization: `Bearer ${token}` }
         });
         return { status: response.status, data: response.data };
     } catch (error) {
-        utils.debugError('[postFitbitWeight] Error making POST request:', error);
-    }
-}
-
-async function postFitbitBodyFat(token, bodyFat, date, time) {
-    let url = 'https://api.fitbit.com/1/user/-/body/log/fat.json';
-
-    try {
-        const response = await axios.post(url, null, {
-            params: {
-                fat: bodyFat,
-                date: date,
-                time: time
-            },
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
-        return { status: response.status, data: response.data };
-    } catch (error) {
-        utils.debugError('[postFitbitBodyFat] Error making POST request:', error);
+        utils.debugError(`[postFitbitLog/${endpoint}] Error making POST request:`, error);
     }
 }
 
 async function update() {
-    const startDay = moment().tz(TIMEZONE_STRING).startOf('day').unix();
+    try {
+        const startDay = DateTime.now().setZone(TIMEZONE_STRING).startOf('day').toUnixInteger();
 
-    let withingsTokens = await returnWithingsTokens();
-    utils.debugLog(`withingsTokens: ${JSON.stringify(withingsTokens, null, 4)}`);
+        const withingsTokens = await returnWithingsTokens();
+        utils.debugLog(`withingsTokens: ${JSON.stringify(withingsTokens, null, 4)}`);
 
-    if (withingsTokens && withingsTokens.status === 'success') {
-        let withingsData = await fetchWithingsData(withingsTokens.data.access_token, startDay);
+        if (!withingsTokens || withingsTokens.status !== 'success') {
+            utils.debugError(`Error acquiring Withings tokens: ${JSON.stringify(withingsTokens, null, 2)}`);
+            if (PUSHOVER) utils.sendPushoverMessage(`Error acquiring Withings tokens: ${JSON.stringify(withingsTokens, null, 2)}`);
+            return;
+        }
+
+        const withingsData = await fetchWithingsData(withingsTokens.data.access_token, startDay);
         utils.debugLog(`withingsData: ${JSON.stringify(withingsData, null, 4)}`);
 
-        if (withingsData.measuregrps && withingsData.measuregrps.length > 0) {
+        if (!withingsData) {
+            utils.debugError('Failed to fetch Withings data');
+            if (PUSHOVER) utils.sendPushoverMessage('Failed to fetch Withings data');
+            return;
+        }
 
-            let inputData = parseWithingsData(withingsData);
+        if (!withingsData.measuregrps || withingsData.measuregrps.length === 0) {
+            utils.debugLog('No weight data to log today.');
+            if (DEBUG && PUSHOVER) utils.sendPushoverMessage('No weight data to log today.');
+            return;
+        }
 
-            let fitbitTokens = await returnFitbitTokens();
-            utils.debugLog(`fitbitToken: ${JSON.stringify(fitbitTokens.data, null, 4)}`);
+        const inputData = parseWithingsData(withingsData);
 
-            if (fitbitTokens && fitbitTokens.status === 'success') {
-                try {
+        const fitbitTokens = await returnFitbitTokens();
+        utils.debugLog(`fitbitTokens: ${JSON.stringify(fitbitTokens.data, null, 4)}`);
 
-                    const weightResponse = await postFitbitWeight(fitbitTokens.data.access_token, inputData.weight, inputData.date, inputData.time);
-                    const fatResponse = await postFitbitBodyFat(fitbitTokens.data.access_token, inputData.fat, inputData.date, inputData.time);
+        if (!fitbitTokens || fitbitTokens.status !== 'success') {
+            utils.debugError(`Error acquiring Fitbit tokens: ${JSON.stringify(fitbitTokens, null, 2)}`);
+            if (PUSHOVER) utils.sendPushoverMessage(`Error acquiring Fitbit tokens: ${JSON.stringify(fitbitTokens, null, 2)}`);
+            return;
+        }
 
-                    utils.debugLog(weightResponse);
-                    utils.debugLog(fatResponse);
+        const token = fitbitTokens.data.access_token;
+        const weightPromise = inputData.weight !== undefined
+            ? postFitbitLog(token, 'weight', { weight: inputData.weight, date: inputData.date, time: inputData.time })
+            : Promise.resolve(null);
+        const fatPromise = inputData.fat !== undefined
+            ? postFitbitLog(token, 'fat', { fat: inputData.fat, date: inputData.date, time: inputData.time })
+            : Promise.resolve(null);
 
-                    if (weightResponse.status === 201 && fatResponse.status === 201) {
-                        if (PUSHOVER) {
-                            utils.sendPushoverMessage(`Withings data successfully sent to Fitbit: (Body Fat: ${inputData.fat} Weight: ${inputData.weight}, Date: ${inputData.date}, Time: ${inputData.time}}`);
-                        };
-                    } else {
-                        if (PUSHOVER) {
-                            utils.sendPushoverMessage(`Error sending Withings data to Fitbit: postFitbitWeight ${weightResponse.status}, postFitbitBodyFat: ${fatResponse.status}`);
-                        };
-                    }
-                } catch (error) {
-                    if (PUSHOVER) {
-                        utils.sendPushoverMessage(`Error sending Withings data to Fitbit: ${error}`);
-                    };
-                };
-            } else {
-                utils.debugError(`Error acquiring Fitbit tokens. fitbitTokens: ${JSON.stringify(fitbitTokens, null, 2)}`);
-                if (PUSHOVER) {
-                    utils.sendPushoverMessage(`Error acquiring Fitbit tokens. fitbitTokens: ${JSON.stringify(fitbitTokens, null, 2)}`);
-                }
-            }
+        const [weightResponse, fatResponse] = await Promise.all([weightPromise, fatPromise]);
+        utils.debugLog(weightResponse);
+        utils.debugLog(fatResponse);
+
+        if (weightResponse?.status === 201 && (!inputData.fat || fatResponse?.status === 201)) {
+            if (PUSHOVER) utils.sendPushoverMessage(`Withings data successfully sent to Fitbit: (Body Fat: ${inputData.fat}, Weight: ${inputData.weight}, Date: ${inputData.date}, Time: ${inputData.time})`);
         } else {
-            utils.debugLog('No weight data to log today.')
-            if (DEBUG && PUSHOVER) {
-                utils.sendPushoverMessage('No weight data to log today.')
-            };
-        };
-    } else {
-        utils.debugError(`Error acquiring Withings tokens. withingsTokens: ${JSON.stringify(withingsTokens, null, 2)}`);
-        if (PUSHOVER) {
-            utils.sendPushoverMessage(`Error acquiring Withings tokens. withingsTokens: ${JSON.stringify(withingsTokens, null, 2)}`);
-        };
-    };
-};
+            if (PUSHOVER) utils.sendPushoverMessage(`Error sending Withings data to Fitbit: weight=${weightResponse?.status}, fat=${fatResponse?.status}`);
+        }
+    } catch (error) {
+        utils.debugError(`[update] Unexpected error: ${error}`);
+        if (PUSHOVER) utils.sendPushoverMessage(`Unexpected error in update: ${error}`);
+    }
+}
 
-let rule = new schedule.RecurrenceRule();
+const rule = new schedule.RecurrenceRule();
 rule.tz = TIMEZONE_STRING;
 rule.hour = RUN_HOUR;
 rule.minute = 0;
@@ -173,9 +139,7 @@ rule.second = 0;
 
 if (APP_MODE === 'SCHEDULED') {
     console.log(`App running in scheduled mode (Config: ${RUN_HOUR}:00:00, ${TIMEZONE_STRING})`);
-    const job = schedule.scheduleJob(rule, function () {
-        update();
-    });
+    schedule.scheduleJob(rule, () => update());
 } else {
     update();
-};
+}

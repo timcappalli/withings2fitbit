@@ -1,6 +1,6 @@
 {
   "name": "withings2fitbit",
-  "version": "2025.05.12",
+  "version": "2026.04.03",
   "type": "module",
   "main": "app.js",
   "scripts": {
@@ -10,13 +10,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "axios": "^1.7.9",
-    "dotenv": "^16.4.7",
-    "moment-timezone": "^0.5.46",
+    "axios": "^1.14.0",
+    "dotenv": "^17.4.0",
+    "luxon": "^3.7.2",
     "node-schedule": "^2.1.1",
     "pushover-notifications": "^1.2.3"
-  },
-  "volta": {
-    "node": "22.13.0"
   }
 }

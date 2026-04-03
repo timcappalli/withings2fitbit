@@ -1,19 +1,18 @@
-# Use a smaller base image
-FROM node:22-alpine
+FROM node:24.14-alpine
 
-# Set the working directory inside the container
+RUN addgroup -S app && adduser -S app -G app
+
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available)
 COPY package*.json ./
+RUN npm ci --omit=dev
 
-# Install app dependencies
-RUN npm ci --only=production
+COPY --chown=app:app app.js tokenHandling.js util.js ./
 
-# Copy the rest of the application code
-COPY . .
+USER app
 
-# Define the command to run your app
-CMD [ "node", "app.js" ]
+ENV NODE_ENV=production
 
-LABEL org.opencontainers.image.source=https://github.com/timcappalli/withings2fitbit
+CMD ["node", "app.js"]
+
+LABEL org.opencontainers.image.source="https://github.com/timcappalli/withings2fitbit"
